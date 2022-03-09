@@ -33,43 +33,51 @@ namespace FaceApp.BL.services
 
         public async Task<AuthModel> Register(RegisterDTO registerDTO)
         {
-            if (await userManager.FindByEmailAsync(registerDTO.Email) != null)
-                return new AuthModel { Message = "Email already exsit" };
-            var user = new User
+            try
             {
-                Email = registerDTO.Email,
-                UserName = registerDTO.Email,
-                PhoneNumber = registerDTO.PhoneNumber,
-                BirthDate = registerDTO.BirthDate,
-                FirstName = registerDTO.FirstName,
-                LastName = registerDTO.LastName,
-                Gender = registerDTO.Gender
-            };
-
-            var result = await userManager.CreateAsync(user,registerDTO.Password);
-            if (!result.Succeeded)
-            {
-                var errors = string.Empty;
-                foreach (var error in result.Errors)
+                if (await userManager.FindByEmailAsync(registerDTO.Email) != null)
+                    return new AuthModel { Message = "Email already exsit" };
+                var user = new User
                 {
-                    errors += $"{error} ,";
+                    Email = registerDTO.Email,
+                    UserName = registerDTO.Email,
+                    PhoneNumber = registerDTO.PhoneNumber,
+                    BirthDate = registerDTO.BirthDate,
+                    FirstName = registerDTO.FirstName,
+                    LastName = registerDTO.LastName,
+                    Gender = registerDTO.Gender
+                };
+
+                var result = await userManager.CreateAsync(user, registerDTO.Password);
+                if (!result.Succeeded)
+                {
+                    var errors = string.Empty;
+                    foreach (var error in result.Errors)
+                    {
+                        errors += $"{error} ,";
+                    }
+                    return new AuthModel { Message = errors };
                 }
-                return new AuthModel { Message = errors};
+
+                if (!await roleManager.RoleExistsAsync("admin"))
+                {
+                    await roleManager.CreateAsync(new IdentityRole("admin"));
+                    await userManager.AddToRoleAsync(user, "admin");
+                }
+                else
+                {
+                    await roleManager.CreateAsync(new IdentityRole("user"));
+                    await userManager.AddToRoleAsync(user, "user");
+                }
+
+                var token = CreateToken(user);
+                return new AuthModel { Message = "success", Token = token, IsAuthencated = true };
+            }
+            catch (Exception e)
+            {
+                return new AuthModel { Message = "Phone is exsit"};
             }
 
-            if (!await roleManager.RoleExistsAsync("admin"))
-            {
-                await roleManager.CreateAsync(new IdentityRole("admin"));
-                await userManager.AddToRoleAsync(user, "admin");
-            }
-            else
-            {
-                await roleManager.CreateAsync(new IdentityRole("user"));
-                await userManager.AddToRoleAsync(user, "user");
-            }
-
-            var token = CreateToken(user);
-            return new AuthModel { Message = "success", Token = token, IsAuthencated = true };
         }
 
 
