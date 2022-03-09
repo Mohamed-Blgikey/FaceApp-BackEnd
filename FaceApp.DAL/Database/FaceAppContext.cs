@@ -19,6 +19,9 @@ namespace FaceApp.DAL.Database
                 .HasComputedColumnSql("[FirstName] + ' ' + [LastName]");
                 user.Property(user => user.DateCreated)
                 .HasDefaultValueSql("GetDate()");
+
+                user.HasIndex(u => u.PhoneNumber)
+                .IsUnique();
             });
             base.OnModelCreating(builder);
         }
