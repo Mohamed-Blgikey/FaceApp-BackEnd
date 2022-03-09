@@ -23,7 +23,6 @@ namespace FaceApp.BL.services
         private readonly RoleManager<IdentityRole> roleManager;
         private readonly FaceAppContext context;
 
-        public RoleManager<IdentityRole> RoleManager => roleManager;
         #endregion
 
         #region Ctor
@@ -94,15 +93,15 @@ namespace FaceApp.BL.services
                     return new AuthModel { Message = error };
                 }
 
-                var RoleExsit = await RoleManager.RoleExistsAsync("admin");
+                var RoleExsit = await roleManager.RoleExistsAsync("admin");
                 if (!RoleExsit)
                 {
-                    await RoleManager.CreateAsync(new IdentityRole("admin"));
+                    await roleManager.CreateAsync(new IdentityRole("admin"));
                     await userManager.AddToRoleAsync(user, "admin");
                 }
                 else
                 {
-                    await RoleManager.CreateAsync(new IdentityRole("user"));
+                    await roleManager.CreateAsync(new IdentityRole("user"));
                     await userManager.AddToRoleAsync(user, "user");
                 }
 

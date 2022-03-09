@@ -3,7 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace FaceApp.Controllers
 {
-    [Authorize(Roles ="admin,user")]
+    [Authorize(Roles ="admin")]
     [ApiController]
     [Route("[controller]")]
     
