@@ -11,7 +11,7 @@ namespace FaceApp.BL.services
     public interface IAuthservice
     {
         Task<AuthModel> Register(RegisterDTO registerDTO);
-        Task<AuthModel> Login();
+        Task<AuthModel> Login(LoginDTO loginDTO);
 
     }
 }

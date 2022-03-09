@@ -14,24 +14,27 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers()
     .AddNewtonsoftJson(opt => opt.SerializerSettings.ReferenceLoopHandling = Newtonsoft.Json.ReferenceLoopHandling.Ignore);
+// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
 
-builder.Services.Configure<JWT>(builder.Configuration.GetSection("JWT"));
+builder.Services.AddDbContextPool<FaceAppContext>(opt => opt.UseSqlServer(builder.Configuration.GetConnectionString("DemoConnection")));
 
-builder.Services.AddIdentity<User,IdentityRole>(opt =>
+builder.Services.AddIdentity<User, IdentityRole>(opt =>
 {
     opt.Password.RequireNonAlphanumeric = false;
     opt.Password.RequireUppercase = false;
     opt.Password.RequireDigit = false;
 })
-    .AddEntityFrameworkStores<FaceAppContext>();
+    .AddEntityFrameworkStores<FaceAppContext>()
+    .AddDefaultTokenProviders();
 
-
-builder.Services.AddDbContextPool<FaceAppContext>(opt => opt.UseSqlServer(builder.Configuration.GetConnectionString("DemoConnection")));
-
+builder.Services.Configure<JWT>(builder.Configuration.GetSection("JWT"));
 builder.Services.AddAuthentication(opt =>
 {
     opt.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
     opt.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+
 }).AddJwtBearer(opt =>
 {
     opt.RequireHttpsMetadata = false;
@@ -39,19 +42,21 @@ builder.Services.AddAuthentication(opt =>
     opt.TokenValidationParameters = new TokenValidationParameters
     {
         ValidateIssuerSigningKey = true,
-        ValidateAudience = true,
         ValidateIssuer = true,
+        ValidateAudience = true,
         ValidateLifetime = true,
         ValidIssuer = builder.Configuration["JWT:Issuer"],
         ValidAudience = builder.Configuration["JWT:Audience"],
         IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["JWT:Key"]))
+
     };
 });
 
+
+
+
 builder.Services.AddScoped<IAuthservice, Authservice>();
-// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddCors();
 
 var app = builder.Build();
 
@@ -62,7 +67,8 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-app.UseHttpsRedirection();
+app.UseCors(c => c.AllowAnyHeader().AllowAnyMethod().AllowAnyOrigin());
+
 
 app.UseAuthentication();
 

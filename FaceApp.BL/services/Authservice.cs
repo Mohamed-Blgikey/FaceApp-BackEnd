@@ -1,5 +1,6 @@
 ﻿using FaceApp.BL.Dtos;
 using FaceApp.BL.Helper;
+using FaceApp.DAL.Database;
 using FaceApp.DAL.Extend;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Options;
@@ -16,27 +17,61 @@ namespace FaceApp.BL.services
 {
     public class Authservice : IAuthservice
     {
+        #region fields
         private readonly UserManager<User> userManager;
         private readonly IOptions<JWT> jwt;
         private readonly RoleManager<IdentityRole> roleManager;
+        private readonly FaceAppContext context;
 
-        public Authservice(UserManager<User> userManager,IOptions<JWT> jwt,RoleManager<IdentityRole> roleManager)
+        public RoleManager<IdentityRole> RoleManager => roleManager;
+        #endregion
+
+        #region Ctor
+        public Authservice(UserManager<User> userManager, IOptions<JWT> jwt, RoleManager<IdentityRole> roleManager,FaceAppContext context)
         {
             this.userManager = userManager;
             this.jwt = jwt;
             this.roleManager = roleManager;
-        }
-        public Task<AuthModel> Login()
-        {
-            throw new NotImplementedException();
-        }
+            this.context = context;
+        } 
+        #endregion
 
+        #region Login
+        public async Task<AuthModel> Login(LoginDTO loginDTO)
+        {
+            var user = await userManager.FindByEmailAsync(loginDTO.Email);
+
+            if (user == null || !await userManager.CheckPasswordAsync(user, loginDTO.Password))
+                return new AuthModel { Message = "Inavlid Email Or Password" };
+
+            if (!user.EmailConfirmed)
+            {
+                return new AuthModel { Message = "Please Check Your Inbox To Confirm Email" };
+            }
+
+            user.IsActive = true;
+            await context.SaveChangesAsync();
+
+            var jwtSecurityToken = await CreateJwtToken(user);
+
+            return new AuthModel
+            {
+                Message = "Success",
+                Token = new JwtSecurityTokenHandler().WriteToken(jwtSecurityToken),
+                ExpiresOn = jwtSecurityToken.ValidTo,
+                IsAuthencated = true
+            };
+        }
+        #endregion
+
+        #region Register
+ 
         public async Task<AuthModel> Register(RegisterDTO registerDTO)
         {
             try
             {
                 if (await userManager.FindByEmailAsync(registerDTO.Email) != null)
-                    return new AuthModel { Message = "Email already exsit" };
+                    return new AuthModel { Message = "Email Is Already Token" };
                 var user = new User
                 {
                     Email = registerDTO.Email,
@@ -47,92 +82,84 @@ namespace FaceApp.BL.services
                     LastName = registerDTO.LastName,
                     Gender = registerDTO.Gender
                 };
-
                 var result = await userManager.CreateAsync(user, registerDTO.Password);
+
                 if (!result.Succeeded)
                 {
-                    var errors = string.Empty;
-                    foreach (var error in result.Errors)
+                    var error = string.Empty;
+                    foreach (var item in result.Errors)
                     {
-                        errors += $"{error} ,";
+                        error += $"{item.Description},";
                     }
-                    return new AuthModel { Message = errors };
+                    return new AuthModel { Message = error };
                 }
 
-                if (!await roleManager.RoleExistsAsync("admin"))
+                var RoleExsit = await RoleManager.RoleExistsAsync("admin");
+                if (!RoleExsit)
                 {
-                    await roleManager.CreateAsync(new IdentityRole("admin"));
+                    await RoleManager.CreateAsync(new IdentityRole("admin"));
                     await userManager.AddToRoleAsync(user, "admin");
                 }
                 else
                 {
-                    await roleManager.CreateAsync(new IdentityRole("user"));
+                    await RoleManager.CreateAsync(new IdentityRole("user"));
                     await userManager.AddToRoleAsync(user, "user");
                 }
 
-                var token = CreateToken(user);
-                return new AuthModel { Message = "success", Token = token, IsAuthencated = true };
+                var jwtSecurityToken = await CreateJwtToken(user);
+
+                return new AuthModel
+                {
+                    Message = "Success",
+                    Token = new JwtSecurityTokenHandler().WriteToken(jwtSecurityToken),
+                    ExpiresOn = jwtSecurityToken.ValidTo,
+                    IsAuthencated = true
+                };
             }
-            catch (Exception e)
+            catch (Exception)
             {
-                return new AuthModel { Message = "Phone is exsit"};
+                return new AuthModel { Message = "Phone is exsit" };
             }
 
         }
 
+        #endregion
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-        private string CreateToken(User user)
+        #region Create Token
+        private async Task<JwtSecurityToken> CreateJwtToken(User user)
         {
-            var userClaims =  userManager.GetClaimsAsync(user).Result;
-            var userRoles =  userManager.GetRolesAsync(user).Result;
+            var userClaims = await userManager.GetClaimsAsync(user);
+            var roles = await userManager.GetRolesAsync(user);
             var roleClaims = new List<Claim>();
-            foreach (var role in userRoles)
+
+            foreach (var role in roles)
+                roleClaims.Add(new Claim("roles", role));
+
+            var claims = new[]
             {
-                roleClaims.Add(new Claim("Roles", role));
-            }
-            var claims = new []
-            {
-                new Claim(JwtRegisteredClaimNames.Jti ,Guid.NewGuid().ToString()),
-                new Claim(JwtRegisteredClaimNames.GivenName,user.FullName),
-                new Claim(JwtRegisteredClaimNames.NameId,user.Id),
+                new Claim(JwtRegisteredClaimNames.NameId, user.Id),
+                new Claim(JwtRegisteredClaimNames.GivenName, user.FullName),
+                new Claim(JwtRegisteredClaimNames.Email, user.Email),
             }
             .Union(userClaims)
             .Union(roleClaims);
 
-            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(this.jwt.Value.Key));
-            var cred = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
-            var JwtSecurityToken = new JwtSecurityToken(
+            var symmetricSecurityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwt.Value.Key));
+            var signingCredentials = new SigningCredentials(symmetricSecurityKey, SecurityAlgorithms.HmacSha256);
+
+            var jwtSecurityToken = new JwtSecurityToken(
                 issuer: jwt.Value.Issuer,
-                audience:jwt.Value.Audience,
-                claims:claims,
-                expires:DateTime.Now.AddDays(jwt.Value.DurationInDays),
-                signingCredentials:cred
-                );
+                audience: jwt.Value.Audience,
+                claims: claims,
+                expires: DateTime.Now.AddDays(jwt.Value.DurationInDays),
+                signingCredentials: signingCredentials);
 
-            var token = new JwtSecurityTokenHandler().WriteToken(JwtSecurityToken);
 
-            return token;
+
+            return jwtSecurityToken;
 
 
         }
+        #endregion
     }
 }
